@@ -48,11 +48,11 @@ jobs:
           snap() {
             xcrun simctl io "$PHONE" screenshot "out/$1-phone.png" || true
             xcrun simctl io "$WATCH" screenshot "out/$1-watch.png" || true
-            timeout 300 maestro --device "$PHONE" hierarchy > "out/$1-hierarchy.json" 2>/dev/null || true
+            perl -e 'alarm shift; exec @ARGV' 300 maestro --device "$PHONE" hierarchy > "out/$1-hierarchy.json" 2>/dev/null || true
           }
           for f in 01-sync 02-gallery 03-add 04-myfaces; do
             echo "=== $f" | tee -a out/steps.log
-            if timeout 1200 maestro --device "$PHONE" test "flows/$f.yaml" >> out/steps.log 2>&1; then
+            if perl -e 'alarm shift; exec @ARGV' 1200 maestro --device "$PHONE" test "flows/$f.yaml" >> out/steps.log 2>&1; then
               echo "PASS $f" | tee -a out/steps.log
             else
               echo "FAIL $f" | tee -a out/steps.log
