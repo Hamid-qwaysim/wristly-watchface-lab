@@ -1,0 +1,8 @@
+appId: com.apple.Bridge
+---
+- tapOn: "Face Gallery"
+- scrollUntilVisible:
+    element: "Photos"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "Photos"

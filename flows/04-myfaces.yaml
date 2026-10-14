@@ -1,0 +1,13 @@
+appId: com.apple.Bridge
+---
+- tapOn:
+    text: "My Watch"
+    optional: true
+- scrollUntilVisible:
+    element: "Photos"
+    direction: RIGHT
+    timeout: 20000
+    optional: true
+- tapOn:
+    text: "Photos"
+    optional: true

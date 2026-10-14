@@ -1,0 +1,75 @@
+name: watchface-explore
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: macOS runner label
+        default: macos-26
+permissions:
+  contents: read
+env:
+  MAESTRO_DRIVER_STARTUP_TIMEOUT: "600000"
+  MAESTRO_CLI_NO_ANALYTICS: "1"
+jobs:
+  explore:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Maestro (in parallel with boot)
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Create, pair, boot
+        run: |
+          mkdir -p out
+          python3 - <<'PY'
+          import json, subprocess, re
+          j = json.loads(subprocess.check_output(["xcrun","simctl","list","-j"]))
+          rts = [r for r in j["runtimes"] if r.get("isAvailable")]
+          ios = sorted([r for r in rts if "SimRuntime.iOS" in r["identifier"]], key=lambda r: r["version"])[-1]
+          wos = sorted([r for r in rts if "SimRuntime.watchOS" in r["identifier"]], key=lambda r: r["version"])[-1]
+          def pick(rt, pat):
+              return [d["identifier"] for d in rt["supportedDeviceTypes"] if re.search(pat, d["name"])][-1]
+          ip = pick(ios, r"^iPhone \d+ Pro$")
+          wt = pick(wos, r"Series \d+.*46mm")
+          phone = subprocess.check_output(["xcrun","simctl","create","SpikePhone",ip,ios["identifier"]]).decode().strip()
+          watch = subprocess.check_output(["xcrun","simctl","create","SpikeWatch",wt,wos["identifier"]]).decode().strip()
+          pair = subprocess.check_output(["xcrun","simctl","pair",watch,phone]).decode().strip()
+          open("ids.env","w").write(f"PHONE={phone}\nWATCH={watch}\nPAIR={pair}\n")
+          PY
+          cat ids.env >> "$GITHUB_ENV"; source ids.env
+          xcrun simctl boot "$PHONE"; xcrun simctl boot "$WATCH"
+          xcrun simctl bootstatus "$PHONE" -b; xcrun simctl bootstatus "$WATCH" -b
+          xcrun simctl privacy "$PHONE" grant all com.apple.Bridge || true
+          xcrun simctl addmedia "$PHONE" media/face.jpg
+      - name: Run steps with evidence
+        run: |
+          snap() {
+            xcrun simctl io "$PHONE" screenshot "out/$1-phone.png" || true
+            xcrun simctl io "$WATCH" screenshot "out/$1-watch.png" || true
+            timeout 300 maestro --device "$PHONE" hierarchy > "out/$1-hierarchy.json" 2>/dev/null || true
+          }
+          for f in 01-sync 02-gallery 03-add 04-myfaces; do
+            echo "=== $f" | tee -a out/steps.log
+            if timeout 1200 maestro --device "$PHONE" test "flows/$f.yaml" >> out/steps.log 2>&1; then
+              echo "PASS $f" | tee -a out/steps.log
+            else
+              echo "FAIL $f" | tee -a out/steps.log
+              snap "$f-fail"
+              [ "$f" = "01-sync" ] && exit 0
+              continue
+            fi
+            snap "$f"
+          done
+      - name: Look for exported watchface files
+        if: always()
+        run: |
+          find ~/Library/Developer/CoreSimulator/Devices/"$PHONE" -iname "*.watchface" 2>/dev/null | tee out/watchface-files.txt
+          find ~/Library/Developer/CoreSimulator/Devices/"$WATCH" -ipath "*face*" -maxdepth 8 2>/dev/null | head -100 > out/watch-face-paths.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: explore-out
+          path: out
+          retention-days: 7

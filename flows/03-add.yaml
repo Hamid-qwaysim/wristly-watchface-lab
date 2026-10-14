@@ -1,0 +1,9 @@
+appId: com.apple.Bridge
+---
+- tapOn:
+    text: ".*Photos.*"
+    index: 1
+    optional: true
+- tapOn:
+    text: "Add"
+    optional: true
